@@ -1,0 +1,109 @@
+import torch 
+from torch.utils.data import Dataset,DataLoader
+from torchvision import transforms
+import numpy as np 
+import os 
+from PIL import Image 
+import torchvision.utils as vutils
+import matplotlib.pyplot as plt
+import scipy.io as io 
+
+'''
+Syn digits dataset
+classes: 10
+training set: 500000
+testing set: 
+feature
+'''
+class Syndigit():
+    def __init__(self,train=True,transform=None,path=None,image_size=32,gray=False):
+        self.train=train
+        self.gray = gray 
+        if transform !=None:
+            self.transform = transform 
+        else:
+            if self.gray == True:
+                self.transform = transforms.Compose([transforms.Resize(image_size),
+                                                    transforms.ToTensor(),
+                                                    transforms.Normalize((0.5,),(0.5,))])
+            else:
+                self.transform = transforms.Compose([transforms.Resize(image_size),
+                                                    transforms.ToTensor(),
+                                                    transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))])
+        
+        if path == None:
+            path = './data/synthdigits'
+        self.path = path
+        self.get_data()
+    
+    def get_data(self):
+        if self.train:
+            self.data = io.loadmat(os.path.join(self.path,'synth_train_32x32.mat'))
+        else:
+            self.data = io.loadmat(os.path.join(self.path,'synth_test_32x32.mat'))
+        self.data['X'] = np.transpose(self.data['X'],[3,0,1,2])
+        self.data['y'] = np.reshape(self.data['y'],(self.data['y'].shape[0]))
+    
+    def __len__(self):
+        return len(self.data['y'])
+    
+    def __getitem__(self,idx):
+        image = self.data['X'][idx]
+        image = Image.fromarray(image,mode='RGB')
+        if self.gray == True:
+            image = image.convert('L')
+        
+        if self.transform:
+            image = self.transform(image)
+        
+        label = self.data['y'][idx]
+        label = np.array(label).astype(np.int64)
+        return image,label 
+
+def get_syndigits(train,batch_size=32,transform=None,path=None,image_size=32,gray=False):
+    dataset = Syndigit(train,transform,path=path,image_size=image_size,gray=gray)
+    if train ==True:
+        shuffle=True
+    else:
+        shuffle = False 
+    loader = DataLoader(dataset,batch_size,shuffle,num_workers=4)
+    print("Synth Digits training:{} dataset:{} batch_num:{}".format(train,len(dataset),len(loader)))
+    return loader 
+
+def get_train_and_test(batch_size,transform=None,path=None,image_size=32,gray=False):
+    train_loader = get_syndigits(True,batch_size,transform,path,image_size,gray)
+    test_loader = get_syndigits(False,batch_size,transform,path,image_size,gray)
+    return train_loader,test_loader
+
+def get_images():
+    dataset = Syndigit(True,None,path=None,image_size=28,gray=False)    
+    for i in range(0,10):
+        for j in range(len(dataset.data['X'])):
+            if dataset.data['y'][j] == i:
+                img = dataset.data['X'][j]
+            
+                #img = np.transpose(dataset.x[j],(1,2,0))
+                print(img.shape)
+
+                img = Image.fromarray(img,mode='RGB')
+                img = img.resize((32,32))
+                img.save("./data/synthdigits/"+str(i)+".jpg")
+                break
+    print("done!")
+
+if __name__ == "__main__":
+    loader = get_syndigits(True,64)
+    print("batch_num:",len(loader))
+    batch = next(iter(loader))
+    first = batch[0][0].numpy()
+    print("image shape:",first.shape)
+    print("max pixel in image:",np.max(first))
+    print("min pixel in image:",np.min(first))
+    print("dtype of image:",first.dtype)
+    
+    plt.figure(figsize=(8,8))
+    plt.axis('off')
+    plt.title("mnist data")
+    imgs = vutils.make_grid(batch[0][:64],padding=2,normalize=True).numpy()
+    plt.imshow(np.transpose(imgs,(1,2,0)))
+    plt.show()
